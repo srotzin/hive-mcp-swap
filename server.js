@@ -73,7 +73,10 @@ const virtualPools = {
 const swapRecords = [];
 const trustCache = new Map();
 
-// ── HiveCurve: Δy = y - k / ((x + Δx) · τ) ──────────────────────────────────
+// ── HiveCurve: trust-scaled constant product AMM ────────────────────────────
+// Base formula (tau=100): Δy = y - k/(x + Δx)   [constant product]
+// Trust adjustment: Δy_final = Δy_base * (tau/100)  [tau=100 → full output; tau<100 → reduced]
+// This matches design spec §2: higher-trust agents receive more favorable pricing
 function hiveCurveQuote(pool, amountIn, trustScore) {
   const tau = Math.min(100, Math.max(0, trustScore)) / 100;
   if (tau < 0.1) return null;
@@ -81,7 +84,11 @@ function hiveCurveQuote(pool, amountIn, trustScore) {
   const protocolFee = amountIn * (pool.protocolFeeBps / 10000);
   const amountInAfterFee = amountIn - fee;
   const { virtualReserveIn: x, virtualReserveOut: y, k } = pool;
-  const amountOut = y - k / ((x + amountInAfterFee) * tau);
+  // Standard constant product output
+  const baseOut = y - k / (x + amountInAfterFee);
+  if (baseOut <= 0) return null;
+  // Trust-scale: tau=1.0 (score 100) → full output; tau=0.6 (score 60) → 60% of output
+  const amountOut = baseOut * tau;
   if (amountOut <= 0) return null;
   return {
     amountOut,
