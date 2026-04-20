@@ -1,0 +1,157 @@
+# Smithery Registry — HiveSwap MCP Server
+
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    properties:
+      did:
+        type: string
+        description: "Agent DID for authenticated swaps. Obtain free at hivegate.onrender.com"
+      api_key:
+        type: string
+        description: "Agent API key from HiveGate onboarding"
+    required: []
+  url: https://hiveswap.onrender.com/mcp
+
+name: hiveswap-mcp
+displayName: HiveSwap — Agent-Native vAMM DEX
+version: "1.0.0"
+description: >
+  Agent-native decentralized exchange with virtual AMM (vAMM) architecture.
+  Swap USDC, USDCx, USAD, and ALEO tokens across 4 settlement rails.
+  Deep liquidity from Hive Civilization's genesis agent pool.
+  ZK-private swaps available via Aleo rail. No slippage on stable pairs.
+  Settles in milliseconds via HiveBank. Part of the Hive Civilization
+  trust and settlement network (thehiveryiq.com).
+
+author:
+  name: Steve Rotzin
+  email: steve@thehiveryiq.com
+  url: https://www.thehiveryiq.com
+
+license: MIT
+homepage: https://www.thehiveryiq.com
+repository:
+  type: git
+  url: https://github.com/srotzin/hiveswap
+
+transport: streamable-http
+endpoint: https://hiveswap.onrender.com/mcp
+protocol: "2024-11-05"
+
+categories:
+  - defi
+  - agent-to-agent
+  - web3
+  - payments
+  - zero-knowledge
+
+tags:
+  - mcp
+  - hive
+  - swap
+  - vamm
+  - dex
+  - usdc
+  - aleo
+  - zk
+  - base-l2
+  - defai
+  - ai-agents
+  - settlement
+
+tools:
+  - name: swap_quote
+    description: >
+      Get a swap quote for any token pair across Hive's 4 settlement rails.
+      Returns best route, expected output, price impact, and fees.
+      No auth required.
+    inputs:
+      - name: token_in
+        type: string
+        required: true
+        description: "Input token: USDC, USDCx, USAD, ALEO"
+      - name: token_out
+        type: string
+        required: true
+        description: "Output token: USDC, USDCx, USAD, ALEO"
+      - name: amount_in
+        type: number
+        required: true
+        description: "Amount of input token"
+      - name: rail
+        type: string
+        required: false
+        description: "Preferred rail: base-usdc, aleo-usdcx, aleo-usad, aleo-native"
+
+  - name: swap_execute
+    description: >
+      Execute a token swap. Agent-signed transaction routed through HiveBank
+      settlement. For ZK-private swaps use rail=aleo-usdcx (Aleo ZK circuit).
+      USDC swaps settle on Base L2 in under 2 seconds.
+    inputs:
+      - name: token_in
+        type: string
+        required: true
+      - name: token_out
+        type: string
+        required: true
+      - name: amount_in
+        type: number
+        required: true
+      - name: min_amount_out
+        type: number
+        required: true
+        description: "Minimum acceptable output (slippage protection)"
+      - name: rail
+        type: string
+        required: false
+        description: "Settlement rail (default: base-usdc)"
+      - name: did
+        type: string
+        required: true
+      - name: api_key
+        type: string
+        required: true
+
+  - name: swap_liquidity_add
+    description: >
+      Add liquidity to a HiveSwap pool. Earn LP fees from agent trading volume.
+      Returns LP token receipt.
+    inputs:
+      - name: pool
+        type: string
+        required: true
+        description: "Pool identifier (e.g. USDC-ALEO, USDC-USDCx)"
+      - name: amount_a
+        type: number
+        required: true
+      - name: amount_b
+        type: number
+        required: true
+      - name: did
+        type: string
+        required: true
+      - name: api_key
+        type: string
+        required: true
+
+  - name: swap_pool_stats
+    description: >
+      Get stats for all HiveSwap pools — TVL, volume, APY, top liquidity providers.
+      No auth required.
+    inputs:
+      - name: pool
+        type: string
+        required: false
+        description: "Specific pool to query (optional)"
+
+runtime:
+  type: node
+  version: ">=18"
+  command: node server.js
+  env:
+    - name: PORT
+      default: "3458"
+      required: false
