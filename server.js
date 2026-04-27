@@ -1,6 +1,7 @@
 // server.js — HiveSwap MCP Server
 import express from 'express';
 import cors from 'cors';
+import { renderLanding, renderRobots, renderSitemap, renderSecurity, renderOgImage, seoJson, BRAND_GOLD } from './meta.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -111,6 +112,23 @@ const MCP_TOOLS = [
   },
 ];
 
+
+const SERVICE_CFG = {
+  service: "hive-mcp-swap",
+  shortName: "HiveSwap",
+  title: "HiveSwap \u00b7 Agent-Native vAMM DEX MCP",
+  tagline: "Agent-native vAMM DEX for USDC, USDCx, USAD, ALEO across 4 settlement rails.",
+  description: "MCP server for HiveSwap \u2014 agent-native vAMM DEX. Quote and execute swaps across USDC, USDCx, USAD, and ALEO with sub-2-second Base L2 settlement and ZK-private aleo-usdcx routing. Real rails, no simulated trades.",
+  keywords: ["mcp", "model-context-protocol", "x402", "agentic", "ai-agent", "ai-agents", "llm", "hive", "hive-civilization", "dex", "vamm", "amm", "swap", "usdc", "base", "base-l2", "aleo", "zk-privacy", "agent-economy"],
+  externalUrl: "https://hive-mcp-gateway.onrender.com/swap",
+  gatewayMount: "/swap",
+  version: "1.0.1",
+  pricing: [
+    { name: "swap.get_quote", priceUsd: 0, label: "Quote \u2014 free" },
+    { name: "swap.execute_swap", priceUsd: 0.005, label: "Execute swap (Tier 2)" }
+  ],
+};
+SERVICE_CFG.tools = (typeof TOOLS !== 'undefined' ? TOOLS : (typeof MCP_TOOLS !== 'undefined' ? MCP_TOOLS : [])).map(t => ({ name: t.name, description: t.description }));
 // ─── MCP Prompts ────────────────────────────────────────────────────────────
 const MCP_PROMPTS = [
   {
@@ -301,6 +319,24 @@ app.get('/.well-known/mcp.json', (req, res) => res.json({
   prompts: MCP_PROMPTS.map(p => ({ name: p.name, description: p.description })),
 }));
 
+
+// HIVE_META_BLOCK_v1 — comprehensive meta tags + JSON-LD + crawler discovery
+app.get('/', (req, res) => {
+  res.type('text/html; charset=utf-8').send(renderLanding(SERVICE_CFG));
+});
+app.get('/og.svg', (req, res) => {
+  res.type('image/svg+xml').send(renderOgImage(SERVICE_CFG));
+});
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(renderRobots(SERVICE_CFG));
+});
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml').send(renderSitemap(SERVICE_CFG));
+});
+app.get('/.well-known/security.txt', (req, res) => {
+  res.type('text/plain').send(renderSecurity());
+});
+app.get('/seo.json', (req, res) => res.json(seoJson(SERVICE_CFG)));
 app.use((req, res) => {
   res.status(404).json({
     status: 'error',
