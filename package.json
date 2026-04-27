@@ -1,6 +1,6 @@
 {
   "name": "hive-mcp-swap",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -29,9 +29,15 @@
     "base-l2",
     "aleo",
     "zk-privacy",
-    "agent-economy"
+    "agent-economy",
+    "a2a",
+    "agent-card",
+    "oac",
+    "open-agent-card",
+    "attribution",
+    "earn"
   ],
-  "description": "MCP server for HiveSwap \u2014 agent-native vAMM DEX. Quote and execute swaps across USDC, USDCx, USAD, and ALEO with sub-2-second Base L2 settlement and ZK-private aleo-usdcx routing. Real rails, no simulated trades.",
+  "description": "MCP server for HiveSwap — agent-native vAMM DEX. Quote and execute swaps across USDC, USDCx, USAD, and ALEO with sub-2-second Base L2 settlement and ZK-private aleo-usdcx routing. Real rails, no simulated trades.",
   "homepage": "https://hive-mcp-gateway.onrender.com/swap",
   "repository": {
     "type": "git",

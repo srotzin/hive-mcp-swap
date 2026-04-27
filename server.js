@@ -1,5 +1,7 @@
 // server.js — HiveSwap MCP Server
 import express from 'express';
+import { HIVE_EARN_TOOLS, executeHiveEarnTool, isHiveEarnTool } from './hive-earn-tools.js';
+import { buildAgentCard, buildOacJsonLd, renderRootHtml } from './hive-agent-card.js';
 import cors from 'cors';
 import { renderLanding, renderRobots, renderSitemap, renderSecurity, renderOgImage, seoJson, BRAND_GOLD } from './meta.js';
 
@@ -34,6 +36,20 @@ app.get('/health', (req, res) => {
 });
 
 // ─── MCP Tools ──────────────────────────────────────────────────────────────
+
+// ─── Agent-native config (A2A AgentCard + OAC JSON-LD + earn rails) ───────
+const HIVE_AGENT_CFG = {
+  name: 'HiveSwap MCP',
+  description: "Agent-native vAMM DEX MCP server for USDC, USDCx, USAD across 4 settlement rails. Real Base USDC settlement, no testnet.",
+  url: 'https://hive-mcp-swap.onrender.com',
+  version: '1.0.2',
+  repoUrl: 'https://github.com/srotzin/hive-mcp-swap',
+  did: 'did:hive:swap',
+  gatewayUrl: 'https://hive-mcp-gateway.onrender.com',
+  // Tools attached at runtime (after merging earn tools in)
+  tools: [],
+};
+
 const MCP_TOOLS = [
   {
     name: 'swap.get_quote',
@@ -129,6 +145,12 @@ const SERVICE_CFG = {
   ],
 };
 SERVICE_CFG.tools = (typeof TOOLS !== 'undefined' ? TOOLS : (typeof MCP_TOOLS !== 'undefined' ? MCP_TOOLS : [])).map(t => ({ name: t.name, description: t.description }));
+
+// HIVE_AGENT_NATIVE_v1 — earn tools + AgentCard wiring
+for (const t of HIVE_EARN_TOOLS) {
+  if (!MCP_TOOLS.find(x => x.name === t.name)) MCP_TOOLS.push(t);
+}
+HIVE_AGENT_CFG.tools = MCP_TOOLS;
 // ─── MCP Prompts ────────────────────────────────────────────────────────────
 const MCP_PROMPTS = [
   {
@@ -265,6 +287,11 @@ app.post('/mcp', async (req, res) => {
 
     if (method === 'tools/call') {
       const { name, arguments: args } = params || {};
+      // HIVE_AGENT_DISPATCH_v1 — earn tools first
+      if (isHiveEarnTool(name)) {
+        const earnOut = await executeHiveEarnTool(name, args || {});
+        if (earnOut) return res.json({ jsonrpc: '2.0', id, result: { content: [earnOut] } });
+      }
       const headers = { 'Content-Type': 'application/json', 'x-hive-did': args?.did || '', 'x-api-key': args?.api_key || '', 'x-internal-key': INTERNAL_KEY };
 
       const toolRoutes = {
@@ -322,7 +349,12 @@ app.get('/.well-known/mcp.json', (req, res) => res.json({
 
 // HIVE_META_BLOCK_v1 — comprehensive meta tags + JSON-LD + crawler discovery
 app.get('/', (req, res) => {
-  res.type('text/html; charset=utf-8').send(renderLanding(SERVICE_CFG));
+  // HIVE_AGENT_INJECT_LD_v1 — inject OAC JSON-LD into the meta-tags landing
+  const __landing = renderLanding(SERVICE_CFG);
+  const __oacLd = JSON.stringify(buildOacJsonLd(HIVE_AGENT_CFG)).replace(/</g, '\\u003c');
+  const __ldTag = '\n<script type="application/ld+json">' + __oacLd + '</script>\n';
+  const __out = __landing.replace('</head>', __ldTag + '</head>');
+  res.type('text/html; charset=utf-8').send(__out);
 });
 app.get('/og.svg', (req, res) => {
   res.type('image/svg+xml').send(renderOgImage(SERVICE_CFG));
@@ -344,6 +376,20 @@ app.use((req, res) => {
     detail: `Route ${req.method} ${req.path} not found`,
     available: ['GET /health', 'POST /mcp', 'GET /.well-known/mcp.json'],
   });
+});
+
+// HIVE_AGENT_ROUTES_v1 — A2A AgentCard + OAC JSON-LD
+app.get('/.well-known/agent.json', (req, res) => {
+  res.json(buildAgentCard(HIVE_AGENT_CFG));
+});
+app.get('/agent.json', (req, res) => {
+  res.json(buildAgentCard(HIVE_AGENT_CFG));
+});
+app.get('/.well-known/oac.json', (req, res) => {
+  res.json(buildOacJsonLd(HIVE_AGENT_CFG));
+});
+app.get('/agent.html', (req, res) => {
+  res.type('text/html; charset=utf-8').send(renderRootHtml(HIVE_AGENT_CFG));
 });
 
 app.listen(PORT, '0.0.0.0', () => {
