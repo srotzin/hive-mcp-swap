@@ -136,7 +136,7 @@ const SERVICE_CFG = {
   tagline: "Agent-native vAMM DEX for USDC, USDCx, USAD, ALEO across 4 settlement rails.",
   description: "MCP server for HiveSwap \u2014 agent-native vAMM DEX. Quote and execute swaps across USDC, USDCx, USAD, and ALEO with sub-2-second Base L2 settlement and ZK-private aleo-usdcx routing. Real rails, no simulated trades.",
   keywords: ["mcp", "model-context-protocol", "x402", "agentic", "ai-agent", "ai-agents", "llm", "hive", "hive-civilization", "dex", "vamm", "amm", "swap", "usdc", "base", "base-l2", "aleo", "zk-privacy", "agent-economy"],
-  externalUrl: "https://hive-mcp-gateway.onrender.com/swap",
+  externalUrl: "https://hive-mcp-swap.onrender.com",
   gatewayMount: "/swap",
   version: "1.0.1",
   pricing: [

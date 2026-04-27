@@ -11,6 +11,7 @@ export const ORG_NAME = 'Hive Civilization';
 export const AUTHOR = 'Steve Rotzin / Hive Civilization';
 export const AUTHOR_EMAIL = 'steve@thehiveryiq.com';
 export const CANONICAL_GATEWAY = 'https://hive-mcp-gateway.onrender.com';
+export const CANONICAL_SELF = 'https://hive-mcp-swap.onrender.com';
 
 /**
  * @param {{
