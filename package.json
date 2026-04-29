@@ -1,6 +1,6 @@
 {
-  "name": "hive-mcp-swap",
-  "version": "1.0.2",
+  "name": "hive-swap-router-federation",
+  "version": "2.0.0",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -16,33 +16,34 @@
     "x402",
     "agentic",
     "ai-agent",
-    "ai-agents",
-    "llm",
     "hive",
     "hive-civilization",
-    "dex",
-    "vamm",
-    "amm",
-    "swap",
+    "swap-router",
+    "trust-layer",
+    "receipt",
+    "uniswap",
+    "jupiter",
+    "okx",
+    "federation",
     "usdc",
     "base",
-    "base-l2",
-    "aleo",
-    "zk-privacy",
+    "solana",
     "agent-economy",
     "a2a",
     "agent-card",
     "oac",
     "open-agent-card",
     "attribution",
-    "earn"
+    "earn",
+    "aml",
+    "attestation"
   ],
-  "description": "MCP server for HiveSwap — agent-native vAMM DEX. Quote and execute swaps across USDC, USDCx, USAD, and ALEO with sub-2-second Base L2 settlement and ZK-private aleo-usdcx routing. Real rails, no simulated trades.",
-  "homepage": "https://hive-mcp-gateway.onrender.com/swap",
+  "description": "MCP server for hive-swap-router-federation — meta-router that quotes Uniswap v3 (Base), Jupiter (Solana), and OKX DEX. Returns best route. Charges 5 bps trust + receipt fee. Wallet keeps custody. Hive is NOT a DEX.",
+  "homepage": "https://hive-mcp-swap.onrender.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/srotzin/hive-mcp-swap"
   },
-  "author": "Steve Rotzin <steve@thehiveryiq.com> (https://www.thehiveryiq.com)",
-  "license": "MIT"
+  "license": "MIT",
+  "author": "Steve Rotzin / Hive Civilization"
 }
