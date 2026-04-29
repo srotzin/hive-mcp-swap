@@ -68,3 +68,15 @@ This shim ships the Hive Civilization agent-native bundle so any A2A or MCP-awar
 - **x402 propagation** — paid responses pass through the upstream 402 body untouched so the consuming agent can auto-pay.
 - **Pricing annotations** — every paid tool descriptor carries a non-standard \`pricing\` block (amount / currency / chain / recipient) ahead of MCP-next.
 - Brand: Hive Civilization gold \`#C08D23\`. Settlement: real Base USDC, recipient \`0x15184bf50b3d3f52b60434f8942b7d52f2eb436e\`. No mock, no testnet.
+
+## Hive Civilization Directory
+
+Part of the Hive Civilization — agent-native financial infrastructure.
+
+- Endpoint Directory: https://thehiveryiq.com
+- Live Leaderboard: https://hive-a2amev.onrender.com/leaderboard
+- Revenue Dashboard: https://hivemine-dashboard.onrender.com
+- Other MCP Servers: https://github.com/srotzin?tab=repositories&q=hive-mcp
+
+Brand: #C08D23
+<!-- /hive-footer -->
