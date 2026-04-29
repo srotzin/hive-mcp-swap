@@ -369,6 +369,44 @@ app.get('/.well-known/security.txt', (req, res) => {
   res.type('text/plain').send(renderSecurity());
 });
 app.get('/seo.json', (req, res) => res.json(seoJson(SERVICE_CFG)));
+
+app.get('/.well-known/agent-card.json', (req, res) => res.json({
+  protocolVersion: '0.3.0',
+  name: 'hive-mcp-swap',
+  description: "Hive Civilization swap MCP — agent-native token swap with x402 USDC settlement.",
+  url: 'https://hive-mcp-swap.onrender.com',
+  version: '1.0.2',
+  provider: { organization: 'Hive Civilization', url: 'https://hiveagentiq.com' },
+  capabilities: { streaming: false, pushNotifications: false },
+  defaultInputModes: ['application/json'],
+  defaultOutputModes: ['application/json'],
+  authentication: { schemes: ['x402', 'api-key'] },
+  payment: {
+    protocol: 'x402', currency: 'USDC', network: 'base',
+    address: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e'
+  },
+  extensions: {
+    hive_pricing: {
+      currency: 'USDC', network: 'base', model: 'per_call',
+      first_call_free: true, loyalty_threshold: 6,
+      loyalty_message: 'Every 6th paid call is free'
+    }
+  },
+  bogo: {
+    first_call_free: true, loyalty_threshold: 6,
+    pitch: "Pay this once, your 6th paid call is on the house. New here? Add header 'x-hive-did' to claim your first call free.",
+    claim_with: 'x-hive-did header'
+  }
+}));
+
+app.get('/.well-known/ap2.json', (req, res) => res.json({
+  ap2_version: '1.0',
+  agent: 'hive-mcp-swap',
+  payment_methods: ['x402-usdc-base'],
+  treasury: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+  bogo: { first_call_free: true, loyalty_threshold: 6, claim_with: 'x-hive-did header' }
+}));
+
 app.use((req, res) => {
   res.status(404).json({
     status: 'error',
