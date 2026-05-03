@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "@noble/ed25519": "^2.1.0"
   },
   "keywords": [
     "mcp",
@@ -38,7 +39,7 @@
     "aml",
     "attestation"
   ],
-  "description": "MCP server for hive-swap-router-federation — meta-router that quotes Uniswap v3 (Base), Jupiter (Solana), and OKX DEX. Returns best route. Charges 5 bps trust + receipt fee. Wallet keeps custody. Hive is NOT a DEX.",
+  "description": "MCP server for hive-swap-router-federation \u2014 meta-router that quotes Uniswap v3 (Base), Jupiter (Solana), and OKX DEX. Returns best route. Charges 5 bps trust + receipt fee. Wallet keeps custody. Hive is NOT a DEX.",
   "homepage": "https://hive-mcp-swap.onrender.com",
   "repository": {
     "type": "git",
