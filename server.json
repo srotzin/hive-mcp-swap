@@ -1,18 +1,29 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.srotzin/hive-mcp-swap",
+  "description": "HiveSwap MCP Server \u2014 agent-native vAMM DEX. Swap USDC/USDCx/USAD/ALEO across 4 settlement rails.",
   "title": "Hive Swap",
-  "description": "Cross-chain token swaps for autonomous agents on Base L2 and partner rails",
-  "version": "1.0.0",
-  "websiteUrl": "https://www.hiveagentiq.com",
-  "remotes": [
-    {
-      "url": "https://hive-mcp-swap.onrender.com/mcp",
-      "type": "streamable-http"
-    }
-  ],
+  "websiteUrl": "https://thehiveryiq.com",
   "repository": {
     "url": "https://github.com/srotzin/hive-mcp-swap",
     "source": "github"
+  },
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://hive-mcp-gateway.onrender.com/swap/mcp"
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "tool": "hive-release-tool",
+      "version": "1.0.0",
+      "build_info": {
+        "stack": "hive-civilization",
+        "settlement": "USDC on Base",
+        "license": "MIT"
+      }
+    }
   }
 }
