@@ -161,7 +161,7 @@ export function renderRootHtml(cfg) {
   const safeDesc = escapeHtml(cfg.description);
   const safeUrl = escapeHtml(cfg.url);
   const safeRepo = escapeHtml(cfg.repoUrl || 'https://github.com/srotzin');
-  const safeGw = escapeHtml(cfg.gatewayUrl || 'https://hive-mcp-gateway.onrender.com');
+  const safeGw = escapeHtml(cfg.gatewayUrl || 'https://mcp-swap.thehiveryiq.com');
   const toolList = (cfg.tools || [])
     .map((t) => `<li><code>${escapeHtml(t.name)}</code> — ${escapeHtml(t.description.slice(0, 140))}</li>`)
     .join('\n      ');

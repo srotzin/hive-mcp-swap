@@ -1,7 +1,7 @@
 <!-- HIVE_BANNER_V1 -->
 <p align="center">
-  <a href="https://hive-mcp-gateway.onrender.com/swap/health">
-    <img src="https://hive-mcp-gateway.onrender.com/swap/og.svg" alt="HiveSwap · Agent-Native vAMM DEX MCP" width="100%"/>
+  <a href="https://mcp-swap.thehiveryiq.com/health">
+    <img src="https://mcp-swap.thehiveryiq.com/og.svg" alt="HiveSwap · Agent-Native vAMM DEX MCP" width="100%"/>
   </a>
 </p>
 
@@ -12,13 +12,13 @@
 <p align="center">
   <a href="https://smithery.ai/server/hivecivilization"><img alt="Smithery" src="https://img.shields.io/badge/Smithery-hivecivilization-C08D23?style=flat-square"/></a>
   <a href="https://glama.ai/mcp/servers"><img alt="Glama" src="https://img.shields.io/badge/Glama-pending-C08D23?style=flat-square"/></a>
-  <a href="https://hive-mcp-gateway.onrender.com/swap/health"><img alt="Live" src="https://img.shields.io/badge/gateway-live-C08D23?style=flat-square"/></a>
+  <a href="https://mcp-swap.thehiveryiq.com/health"><img alt="Live" src="https://img.shields.io/badge/gateway-live-C08D23?style=flat-square"/></a>
   <a href="https://github.com/srotzin/hive-mcp-swap/releases"><img alt="Release" src="https://img.shields.io/github/v/release/srotzin/hive-mcp-swap?style=flat-square&color=C08D23"/></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-C08D23?style=flat-square"/></a>
 </p>
 
 <p align="center">
-  <code>https://hive-mcp-gateway.onrender.com/swap/mcp</code>
+  <code>https://mcp-swap.thehiveryiq.com/mcp</code>
 </p>
 
 ---
@@ -31,7 +31,7 @@ MCP server for HiveSwap — agent-native vAMM DEX. Quote and execute swaps acros
 
 ## What this is
 
-`hive-mcp-swap` is a Model Context Protocol (MCP) server that exposes the HiveSwap platform on the Hive Civilization to any MCP-compatible client (Claude Desktop, Cursor, Manus, etc.). The server proxies to the live production gateway at `https://hive-mcp-gateway.onrender.com`.
+`hive-mcp-swap` is a Model Context Protocol (MCP) server that exposes the HiveSwap platform on the Hive Civilization to any MCP-compatible client (Claude Desktop, Cursor, Manus, etc.). The server proxies to the live production gateway at `https://mcp-swap.thehiveryiq.com`.
 
 - **Protocol:** MCP 2024-11-05 over Streamable-HTTP / JSON-RPC 2.0
 - **x402 micropayments:** every paid call produces a real on-chain settlement

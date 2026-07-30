@@ -23,7 +23,7 @@ startCommand:
         default: base-usdc
         x-order: 2
     required: []
-  url: https://hiveswap.onrender.com/mcp
+  url: https://mcp-swap.thehiveryiq.com/mcp
 
 name: hiveswap-mcp
 displayName: HiveSwap — Agent-Native vAMM DEX
@@ -45,7 +45,7 @@ repository:
   url: https://github.com/srotzin/hive-mcp-swap
 
 transport: streamable-http
-endpoint: https://hiveswap.onrender.com/mcp
+endpoint: https://mcp-swap.thehiveryiq.com/mcp
 protocol: "2024-11-05"
 
 categories:
