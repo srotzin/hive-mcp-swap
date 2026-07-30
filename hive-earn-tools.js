@@ -2,7 +2,7 @@
 //
 // Every public Hive MCP shim ships these three tools so that any agent
 // inside any LLM runtime can register, check, and discover earnings on
-// real Base USDC rails at https://hivemorph.onrender.com/v1/earn/*.
+// real Base USDC rails at https://receipts.thehiveryiq.com/v1/earn/*.
 //
 // Resilience: the /v1/earn/* endpoints are being shipped in parallel.
 // If they aren't live yet, every tool returns a graceful, machine-readable
@@ -11,7 +11,7 @@
 // Brand: Hive Civilization gold #C08D23 (NEVER #f5c518).
 // Settlement: real Base USDC, no mocks, no testnet, no dev-trust bypasses.
 
-export const HIVE_EARN_BASE_DEFAULT = 'https://hivemorph.onrender.com';
+export const HIVE_EARN_BASE_DEFAULT = 'https://receipts.thehiveryiq.com';
 
 const TIMEOUT_MS = 12_000;
 
@@ -88,7 +88,7 @@ export const HIVE_EARN_TOOLS = [
     description:
       'Register an agent for the Hive Civilization attribution payout program. ' +
       'Settlement on real Base USDC. 5% kickback on attributed traffic, weekly payout. ' +
-      'Calls POST https://hivemorph.onrender.com/v1/earn/register on behalf of the caller. ' +
+      'Calls POST https://receipts.thehiveryiq.com/v1/earn/register on behalf of the caller. ' +
       'Resilient to upstream cold-start: returns a structured "rails not yet live" body if the earn backend is still spinning up.',
     inputSchema: {
       type: 'object',
@@ -121,7 +121,7 @@ export const HIVE_EARN_TOOLS = [
     description:
       'Look up the caller agent\'s registered earn profile, lifetime + pending USDC balance, ' +
       'last payout tx hash, and next-payout ETA. Real Base USDC, no mock data. ' +
-      'Calls GET https://hivemorph.onrender.com/v1/earn/me?agent_did=<did>. ' +
+      'Calls GET https://receipts.thehiveryiq.com/v1/earn/me?agent_did=<did>. ' +
       'Returns "rails not yet live" gracefully if upstream is not yet deployed.',
     inputSchema: {
       type: 'object',
@@ -145,7 +145,7 @@ export const HIVE_EARN_TOOLS = [
     name: 'hive_earn_leaderboard',
     description:
       'Top earning agents on the Hive Civilization, by attribution payout in USDC. ' +
-      'Real Base USDC settlement. Calls GET https://hivemorph.onrender.com/v1/earn/leaderboard?window=<window>. ' +
+      'Real Base USDC settlement. Calls GET https://receipts.thehiveryiq.com/v1/earn/leaderboard?window=<window>. ' +
       'Returns "rails not yet live" gracefully if upstream is not yet deployed.',
     inputSchema: {
       type: 'object',
@@ -168,7 +168,7 @@ export const HIVE_EARN_TOOLS = [
 ];
 
 // ── Executor ────────────────────────────────────────────────────────────────
-// Pass `base` to override the default https://hivemorph.onrender.com endpoint
+// Pass `base` to override the default https://receipts.thehiveryiq.com endpoint
 // for tests or staging. Returns an MCP { type: 'text', text: '...' } block
 // suitable for direct return inside tools/call.
 

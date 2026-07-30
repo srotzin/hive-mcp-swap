@@ -40,7 +40,7 @@
     "attestation"
   ],
   "description": "MCP server for hive-swap-router-federation \u2014 meta-router that quotes Uniswap v3 (Base), Jupiter (Solana), and OKX DEX. Returns best route. Charges 5 bps trust + receipt fee. Wallet keeps custody. Hive is NOT a DEX.",
-  "homepage": "https://hive-mcp-swap.onrender.com",
+  "homepage": "https://mcp-swap.thehiveryiq.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/srotzin/hive-mcp-swap"

@@ -19,7 +19,7 @@ import { renderLanding, renderRobots, renderSitemap, renderSecurity, renderOgIma
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_URL = process.env.BASE_URL || 'https://hive-mcp-swap.onrender.com';
+const BASE_URL = process.env.BASE_URL || 'https://mcp-swap.thehiveryiq.com';
 const INTERNAL_KEY = process.env.INTERNAL_KEY || '';
 
 // ─── Partner DEX API endpoints ───────────────────────────────────────────────
@@ -536,7 +536,7 @@ app.get('/seo.json', (req, res) => { res.json(seoJson(HIVE_AGENT_CFG)); });
 //        /favicon.ico / (root JSON)  +  catch-all breadcrumb (200 not 404)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const _DOORS_HOST = process.env.RENDER_EXTERNAL_URL || 'https://hive-mcp-swap.onrender.com';
+const _DOORS_HOST = process.env.RENDER_EXTERNAL_URL || 'https://mcp-swap.thehiveryiq.com';
 const _DOORS_ONBOARD = 'https://thehiveryiq.com/onboard.html';
 const _TREASURY = '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E';
 
@@ -571,9 +571,9 @@ MCP tools:
   swap_route_status  — check swap status
 
 ## Sister services
-- HiveGate  (auth + onboarding):  https://hivegate.onrender.com/llms.txt
-- HiveBank  (vaults + payments):  https://hivebank.onrender.com/llms.txt
-- HiveVault MCP:                  https://hive-mcp-vault.onrender.com/llms.txt
+- HiveGate  (auth + onboarding):  https://hivegate.hiveagentiq.com/llms.txt
+- HiveBank  (vaults + payments):  https://hivebank.hiveagentiq.com/llms.txt
+- HiveVault MCP:                  https://mcp-vault.thehiveryiq.com/llms.txt
 - HiveAttest MCP:                 https://hive-mcp-attest.onrender.com/llms.txt
 - HiveMining MCP:                 https://hive-mcp-mining.onrender.com/llms.txt
 

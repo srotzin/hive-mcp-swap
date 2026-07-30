@@ -15,7 +15,7 @@
 // Settlement: real Base USDC. No mock, no testnet, no dev-trust.
 
 export const HIVE_BRAND_GOLD = '#C08D23';
-export const HIVE_PROVIDER_URL = 'https://hivemorph.onrender.com';
+export const HIVE_PROVIDER_URL = 'https://receipts.thehiveryiq.com';
 export const HIVE_PROVIDER_ORG = 'Hive Civilization';
 export const HIVE_AUTHOR = 'Steve Rotzin';
 export const HIVE_AUTHOR_EMAIL = 'steve@thehiveryiq.com';
