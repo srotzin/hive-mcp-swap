@@ -1,82 +1,58 @@
-<!-- HIVE_BANNER_V1 -->
-<p align="center">
-  <a href="https://mcp-swap.thehiveryiq.com/health">
-    <img src="https://mcp-swap.thehiveryiq.com/og.svg" alt="HiveSwap · Agent-Native vAMM DEX MCP" width="100%"/>
-  </a>
-</p>
+# hive-mcp-swap
 
-<h1 align="center">hive-mcp-swap</h1>
+Read-only Paraswap price quotes on Base.
 
-<p align="center"><strong>Agent-native vAMM DEX for USDC, USDCx, USAD, ALEO across 4 settlement rails.</strong></p>
+## Live contract
 
-<p align="center">
-  <a href="https://smithery.ai/server/hivecivilization"><img alt="Smithery" src="https://img.shields.io/badge/Smithery-hivecivilization-C08D23?style=flat-square"/></a>
-  <a href="https://glama.ai/mcp/servers"><img alt="Glama" src="https://img.shields.io/badge/Glama-pending-C08D23?style=flat-square"/></a>
-  <a href="https://mcp-swap.thehiveryiq.com/health"><img alt="Live" src="https://img.shields.io/badge/gateway-live-C08D23?style=flat-square"/></a>
-  <a href="https://github.com/srotzin/hive-mcp-swap/releases"><img alt="Release" src="https://img.shields.io/github/v/release/srotzin/hive-mcp-swap?style=flat-square&color=C08D23"/></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-C08D23?style=flat-square"/></a>
-</p>
+This MCP server exposes one swap capability:
 
-<p align="center">
-  <code>https://mcp-swap.thehiveryiq.com/mcp</code>
-</p>
+| Surface | Purpose |
+|---|---|
+| `GET /v1/swap-route/quote` | Request a live Paraswap price quote on Base |
+| `swap_route.quote` | Request the same quote through MCP |
 
----
+The response identifies Paraswap as the provider and preserves the venue names present in the returned route. Hive does not construct, sign, submit, or settle a transaction. It does not collect a routing fee, operate liquidity, or custody funds.
 
-# HiveSwap
+Supported token symbols are ETH, WETH, USDC, and USDT. A caller may also supply a Base token address. The amount must be positive.
 
-**Agent-native vAMM DEX for USDC, USDCx, USAD, ALEO across 4 settlement rails.**
+## Failure behavior
 
-MCP server for HiveSwap — agent-native vAMM DEX. Quote and execute swaps across USDC, USDCx, USAD, and ALEO with sub-2-second Base L2 settlement and ZK-private aleo-usdcx routing. Real rails, no simulated trades.
+If Paraswap does not return a usable quote, the HTTP endpoint returns 502 with `no_route_available`. The MCP tool returns a structured error payload. Unknown HTTP paths return 404. Unknown MCP tools and methods return JSON-RPC errors.
 
-## What this is
+There is no execution endpoint. There is no transaction construction endpoint. There is no trust score, AML screening, or receipt-signing claim in the quote response.
 
-`hive-mcp-swap` is a Model Context Protocol (MCP) server that exposes the HiveSwap platform on the Hive Civilization to any MCP-compatible client (Claude Desktop, Cursor, Manus, etc.). The server proxies to the live production gateway at `https://mcp-swap.thehiveryiq.com`.
+## Discovery
 
-- **Protocol:** MCP 2024-11-05 over Streamable-HTTP / JSON-RPC 2.0
-- **x402 micropayments:** every paid call produces a real on-chain settlement
-- **Rails:** USDC on Base L2 — real rails, no mocks
-- **Author:** Steve Rotzin · Hive Civilization · brand gold `#C08D23`
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Local liveness and declared capability |
+| `POST` | `/mcp` | MCP JSON-RPC 2.0, protocol `2024-11-05` |
+| `GET` | `/.well-known/mcp.json` | MCP discovery manifest |
+| `GET` | `/.well-known/agent.json` | Agent card |
+| `GET` | `/.well-known/security.txt` | Security contact |
+| `GET` | `/llms.txt` | Plain-text integration guide |
+| `GET` | `/og.svg` | Service image |
 
-## Endpoints
+## Example
 
-| Path | Purpose |
-|------|---------|
-| `POST /mcp` | JSON-RPC 2.0 / MCP 2024-11-05 |
-| `GET  /` | HTML landing with comprehensive meta tags + JSON-LD |
-| `GET  /health` | Health + telemetry |
-| `GET  /.well-known/mcp.json` | MCP discovery descriptor |
-| `GET  /.well-known/security.txt` | RFC 9116 security contact |
-| `GET  /robots.txt` | Allow-all crawl policy |
-| `GET  /sitemap.xml` | Crawler sitemap |
-| `GET  /og.svg` | 1200×630 Hive-gold OG image |
-| `GET  /seo.json` | JSON-LD structured data (SoftwareApplication) |
+```text
+GET https://mcp-swap.thehiveryiq.com/v1/swap-route/quote?tokenIn=ETH&tokenOut=USDC&amountIn=1
+```
 
-## License
+The quote is informational. A caller that chooses to trade must independently construct, review, sign, and submit a transaction using its own wallet and execution provider.
 
-MIT. © Steve Rotzin / Hive Civilization. Brand gold `#C08D23` (Pantone 1245 C). Never `#f5c518`.
+## Testing
 
+```bash
+npm install
+npm test
+```
 
-## Agent-native (v1.0.2)
+The automated suite verifies manifest parity, removal of the former execution surface, honest unknown-route behavior, and the absence of unsupported provider, fee, settlement, AML, and trust claims. A separate live probe verifies that Paraswap can return a current Base quote.
 
-This shim ships the Hive Civilization agent-native bundle so any A2A or MCP-aware agent can discover, pay, and earn:
+## Directory
 
-- **A2A AgentCard** — \`GET /.well-known/agent.json\` (also at \`/agent.json\`).
-- **Open Agent Card (OAC) JSON-LD** — embedded inline at \`/\` and \`/agent.html\`, with \`@type SoftwareApplication\` + \`@type AgentCard\` under \`@context\` \`https://schema.org\` + \`https://a2a-protocol.org/v1\`.
-- **Earn rails** — every shim exposes \`hive_earn_register\`, \`hive_earn_me\`, \`hive_earn_leaderboard\` against \`https://receipts.thehiveryiq.com/v1/earn/*\`.
-  Resilient to upstream cold-start: returns a structured "earn rails not yet live" body if upstream isn't yet deployed.
-- **x402 propagation** — paid responses pass through the upstream 402 body untouched so the consuming agent can auto-pay.
-- **Pricing annotations** — every paid tool descriptor carries a non-standard \`pricing\` block (amount / currency / chain / recipient) ahead of MCP-next.
-- Brand: Hive Civilization gold \`#C08D23\`. Settlement: real Base USDC, recipient \`0x15184bf50b3d3f52b60434f8942b7d52f2eb436e\`. No mock, no testnet.
+- Endpoint: https://mcp-swap.thehiveryiq.com
+- Source: https://github.com/srotzin/hive-mcp-swap
 
-## Hive Civilization Directory
-
-Part of the Hive Civilization — agent-native financial infrastructure.
-
-- Endpoint Directory: https://thehiveryiq.com
-- Live Leaderboard: https://hive-a2amev.onrender.com/leaderboard
-- Revenue Dashboard: https://hivemine-dashboard.onrender.com
-- Other MCP Servers: https://github.com/srotzin?tab=repositories&q=hive-mcp
-
-Brand: #C08D23
-<!-- /hive-footer -->
+Hive Civilization. Brand gold `#C08D23`. Steve Rotzin.

@@ -1,14 +1,14 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.srotzin/hive-mcp-swap",
-  "description": "HiveSwap MCP Server \u2014 agent-native vAMM DEX. Swap USDC/USDCx/USAD/ALEO across 4 settlement rails.",
+  "description": "Read-only Paraswap price quotes on Base. No transaction construction, execution, custody, or fee collection.",
   "title": "Hive Swap",
   "websiteUrl": "https://thehiveryiq.com",
   "repository": {
     "url": "https://github.com/srotzin/hive-mcp-swap",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "2.2.0",
   "remotes": [
     {
       "type": "streamable-http",
@@ -21,7 +21,7 @@
       "version": "1.0.0",
       "build_info": {
         "stack": "hive-civilization",
-        "settlement": "USDC on Base",
+        "mode": "Free read-only quotes",
         "license": "MIT"
       }
     }

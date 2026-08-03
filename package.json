@@ -1,45 +1,40 @@
 {
   "name": "hive-swap-router-federation",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "@noble/ed25519": "^2.1.0"
   },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "x402",
     "agentic",
     "ai-agent",
     "hive",
     "hive-civilization",
     "swap-router",
-    "trust-layer",
-    "receipt",
-    "uniswap",
-    "jupiter",
-    "okx",
+    "paraswap",
     "federation",
     "usdc",
     "base",
-    "solana",
     "agent-economy",
     "a2a",
     "agent-card",
     "oac",
     "open-agent-card",
-    "attribution",
-    "earn",
-    "aml",
-    "attestation"
+    "read-only"
   ],
-  "description": "MCP server for hive-swap-router-federation \u2014 meta-router that quotes Uniswap v3 (Base), Jupiter (Solana), and OKX DEX. Returns best route. Charges 5 bps trust + receipt fee. Wallet keeps custody. Hive is NOT a DEX.",
+  "description": "MCP server for read-only Paraswap price quotes on Base. No transaction construction, execution, custody, or fee collection.",
   "homepage": "https://mcp-swap.thehiveryiq.com",
   "repository": {
     "type": "git",

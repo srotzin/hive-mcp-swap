@@ -1,37 +1,23 @@
-// hive-agent-card.js — emits A2A AgentCard + Open Agent Card JSON-LD.
+// hive-agent-card.js: emits A2A AgentCard and Open Agent Card JSON-LD.
 //
 // One file dropped into every Hive MCP shim. The shim passes its own
 // per-repo metadata in via `cfg`; this module produces:
 //
-//   • /.well-known/agent.json — A2A-compatible AgentCard
+//   - /.well-known/agent.json: A2A-compatible AgentCard
 //     (https://github.com/a2aproject/A2A)
-//   • renderRootHtml() — HTML root response with inline JSON-LD that
+//   - renderRootHtml(): HTML root response with inline JSON-LD that
 //     emits BOTH @type SoftwareApplication AND @type AgentCard
 //     under @context [ "https://schema.org", "https://a2a-protocol.org/v1" ]
-//   • renderOgImageSvg() — fallback 1200x630 brand-gold SVG so OG cards
+//   - renderOgImageSvg(): fallback 1200x630 brand-gold SVG so OG cards
 //     resolve even if the gateway og.svg isn't reachable.
 //
 // Brand: Hive Civilization gold #C08D23 (NEVER #f5c518).
-// Settlement: real Base USDC. No mock, no testnet, no dev-trust.
 
 export const HIVE_BRAND_GOLD = '#C08D23';
-export const HIVE_PROVIDER_URL = 'https://receipts.thehiveryiq.com';
+export const HIVE_PROVIDER_URL = 'https://thehiveryiq.com';
 export const HIVE_PROVIDER_ORG = 'Hive Civilization';
 export const HIVE_AUTHOR = 'Steve Rotzin';
 export const HIVE_AUTHOR_EMAIL = 'steve@thehiveryiq.com';
-
-// Canonical EVM recipient — RAILS_RULES.md Rule 5. Same key used across all
-// EVM chains (Base + Ethereum). Hardcoded; do not parameterize.
-export const HIVE_BASE_USDC_RECIPIENT = '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e';
-
-// Default attribution policy across all shims (the Hive earn rail).
-export const HIVE_ATTRIBUTION = {
-  kickbackPercent: 5,
-  payoutSchedule: 'weekly',
-  payoutChain: 'base',
-  payoutCurrency: 'USDC',
-  payoutRecipient: 'attributed agent payout_address (set via hive_earn_register)',
-};
 
 function toolToSkill(tool) {
   const exampleArgs = {};
@@ -46,21 +32,10 @@ function toolToSkill(tool) {
     id: tool.name,
     name: tool.name,
     description: tool.description,
-    tags: ['mcp', 'hive', 'a2a', 'usdc', 'base'],
+    tags: ['mcp', 'hive', 'a2a', 'paraswap', 'base'],
     examples: [{ name: `${tool.name}-example`, input: { name: tool.name, arguments: exampleArgs } }],
     inputModes: ['application/json'],
     outputModes: ['application/json'],
-  };
-}
-
-function toolToPricing(tool) {
-  const p = tool.pricing || {};
-  return {
-    tool: tool.name,
-    amount: String(p.amount ?? '0'),
-    currency: p.currency || 'USDC',
-    chain: p.chain || 'base',
-    recipient: p.recipient || HIVE_BASE_USDC_RECIPIENT,
   };
 }
 
@@ -78,27 +53,21 @@ export function buildAgentCard(cfg) {
       pushNotifications: false,
       stateTransitionHistory: false,
     },
-    authentication: { schemes: ['x402'] },
+    authentication: { schemes: [] },
     defaultInputModes: ['application/json'],
     defaultOutputModes: ['application/json'],
     skills,
     'x-hive': {
       brand_gold: HIVE_BRAND_GOLD,
       did: cfg.did,
-      attribution: HIVE_ATTRIBUTION,
-      settlement: {
-        rail: 'base-usdc',
-        recipient: HIVE_BASE_USDC_RECIPIENT,
-        no_mock: true,
-        no_testnet: true,
-      },
-      gates: ['NEED', 'YIELD', 'CLEAN-MONEY'],
+      mode: 'read-only',
+      quote_provider: 'Paraswap',
+      chain: 'base',
     },
   };
 }
 
 export function buildOacJsonLd(cfg) {
-  const pricing = (cfg.tools || []).map(toolToPricing);
   const capabilities = (cfg.tools || []).map((t) => ({
     '@type': 'AgentCapability',
     name: t.name,
@@ -115,11 +84,9 @@ export function buildOacJsonLd(cfg) {
         url: cfg.url,
         description: cfg.description,
         offers: {
-          '@type': 'AggregateOffer',
+          '@type': 'Offer',
           priceCurrency: 'USDC',
-          highPrice: pricing.reduce((m, p) => Math.max(m, parseFloat(p.amount) || 0), 0).toFixed(4),
-          lowPrice: '0.0000',
-          offerCount: pricing.length,
+          price: '0',
         },
         provider: { '@type': 'Organization', name: HIVE_PROVIDER_ORG, url: HIVE_PROVIDER_URL },
         author: { '@type': 'Person', name: HIVE_AUTHOR, email: HIVE_AUTHOR_EMAIL },
@@ -138,8 +105,6 @@ export function buildOacJsonLd(cfg) {
           publicKey: cfg.publicKey || null,
         },
         capabilities,
-        pricing,
-        attribution: HIVE_ATTRIBUTION,
       },
     ],
   };
@@ -163,7 +128,7 @@ export function renderRootHtml(cfg) {
   const safeRepo = escapeHtml(cfg.repoUrl || 'https://github.com/srotzin');
   const safeGw = escapeHtml(cfg.gatewayUrl || 'https://mcp-swap.thehiveryiq.com');
   const toolList = (cfg.tools || [])
-    .map((t) => `<li><code>${escapeHtml(t.name)}</code> — ${escapeHtml(t.description.slice(0, 140))}</li>`)
+    .map((t) => `<li><code>${escapeHtml(t.name)}</code>: ${escapeHtml(t.description.slice(0, 140))}</li>`)
     .join('\n      ');
 
   return `<!doctype html>
@@ -202,10 +167,10 @@ export function renderRootHtml(cfg) {
 </header>
 <main>
   <section class="card">
-    <p><strong>MCP endpoint</strong> — <code>${safeUrl}/mcp</code></p>
-    <p><strong>A2A AgentCard</strong> — <a href="/.well-known/agent.json">/.well-known/agent.json</a></p>
-    <p><strong>MCP descriptor</strong> — <a href="/.well-known/mcp.json">/.well-known/mcp.json</a></p>
-    <p><strong>Health</strong> — <a href="/health">/health</a></p>
+    <p><strong>MCP endpoint</strong>: <code>${safeUrl}/mcp</code></p>
+    <p><strong>A2A AgentCard</strong>: <a href="/.well-known/agent.json">/.well-known/agent.json</a></p>
+    <p><strong>MCP descriptor</strong>: <a href="/.well-known/mcp.json">/.well-known/mcp.json</a></p>
+    <p><strong>Health</strong>: <a href="/health">/health</a></p>
   </section>
   <section class="card">
     <h2>Tools (${(cfg.tools || []).length})</h2>
@@ -214,9 +179,8 @@ export function renderRootHtml(cfg) {
     </ul>
   </section>
   <section class="card">
-    <p>Settlement: real Base USDC, recipient <code>${escapeHtml(HIVE_BASE_USDC_RECIPIENT)}</code>. No mock. No testnet. No dev-trust.</p>
-    <p>Attribution kickback: ${HIVE_ATTRIBUTION.kickbackPercent}% in USDC on Base, ${HIVE_ATTRIBUTION.payoutSchedule} payout. Register via <code>hive_earn_register</code>.</p>
-    <p>Gates: NEED + YIELD + CLEAN-MONEY.</p>
+    <p>This service is a free, read-only quote adapter. It does not construct, sign, submit, or settle a transaction.</p>
+    <p>The response identifies Paraswap as the provider and reports the venues present in the returned route.</p>
   </section>
 </main>
 <footer>
@@ -236,6 +200,6 @@ export function renderOgImageSvg(cfg) {
   <text x="80" y="180" font-family="ui-monospace,monospace" font-size="22" fill="${HIVE_BRAND_GOLD}" letter-spacing="6">HIVE CIVILIZATION · MCP</text>
   <text x="80" y="320" font-family="ui-sans-serif,system-ui,sans-serif" font-size="78" font-weight="800" fill="#fbf6ec">${title}</text>
   <text x="80" y="380" font-family="ui-sans-serif,system-ui,sans-serif" font-size="28" fill="rgba(251,246,236,.78)">${sub}</text>
-  <text x="80" y="560" font-family="ui-monospace,monospace" font-size="18" fill="rgba(251,246,236,.5)">a2a · x402 · base usdc · #C08D23</text>
+  <text x="80" y="560" font-family="ui-monospace,monospace" font-size="18" fill="rgba(251,246,236,.5)">a2a · read only · base · #C08D23</text>
 </svg>`;
 }

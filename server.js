@@ -1,39 +1,66 @@
-// server.js — hive-swap-router-federation MCP Server
-// Reframed from vAMM DEX (doctrine violation) to swap-route meta-router.
-// Hive does NOT execute swaps internally. Hive quotes Uniswap (Base),
-// Jupiter (Solana), and OKX DEX (multi-chain), returns the best route,
-// and charges a thin 5 bps "trust + receipt" fee on top.
-// Partner DEX provides liquidity. Wallet keeps custody.
-// Hive provides the trust layer: trust scores, AML attestations, receipts.
+// server.js: hive-swap-router-federation MCP Server
+// This is a read-only Paraswap quote adapter for Base, not a DEX. Hive does
+// not construct transactions, execute swaps, collect fees, or custody funds.
 //
-// commit: refactor(swap): reframe vAMM DEX → swap-router-federation per partner doctrine
+// There is no trust score service, no AML attestation service, and no
+// Spectral signing service behind this server today. Do not add fields that
+// claim those checks happened until a real service backs them.
 //
-// Brand: Hive Civilization gold #C08D23 (NEVER #f5c518).
+// Brand: Hive Civilization gold #C08D23 (never #f5c518).
 
 import express from 'express';
 import { smashProvMiddleware, getPubkeyInfo as getProvPubkeyInfo, verifyProvSig } from './lib/prov.js';
-import { HIVE_EARN_TOOLS, executeHiveEarnTool, isHiveEarnTool } from './hive-earn-tools.js';
-import { buildAgentCard, buildOacJsonLd, renderRootHtml } from './hive-agent-card.js';
+import { buildAgentCard, buildOacJsonLd, renderOgImageSvg, renderRootHtml } from './hive-agent-card.js';
 import cors from 'cors';
-import { renderLanding, renderRobots, renderSitemap, renderSecurity, renderOgImage, seoJson, BRAND_GOLD } from './meta.js';
+import { renderSecurity } from './meta.js';
+
+// Environment validation
+// Fail fast and loudly if required configuration is missing or malformed.
+// This server signs every response with an Ed25519 key (see lib/prov.js) and
+// signs discovery responses. If that configuration is wrong, every signed
+// response would be wrong too, so we refuse to boot instead of serving it.
+function validateEnv() {
+  const errors = [];
+
+  if (process.env.PORT != null && process.env.PORT !== '') {
+    const p = Number(process.env.PORT);
+    if (!Number.isInteger(p) || p <= 0 || p > 65535) {
+      errors.push(`PORT must be an integer between 1 and 65535, got: ${process.env.PORT}`);
+    }
+  }
+
+  if (process.env.BASE_URL != null && process.env.BASE_URL !== '') {
+    try { new URL(process.env.BASE_URL); }
+    catch { errors.push(`BASE_URL is not a valid URL: ${process.env.BASE_URL}`); }
+  }
+
+  if (process.env.HIVE_PROV_SEED != null && process.env.HIVE_PROV_SEED !== '') {
+    try {
+      const decoded = Buffer.from(process.env.HIVE_PROV_SEED, 'base64url');
+      if (decoded.length !== 32) {
+        errors.push(`HIVE_PROV_SEED must decode to exactly 32 bytes (base64url), got ${decoded.length} bytes`);
+      }
+    } catch {
+      errors.push('HIVE_PROV_SEED is not valid base64url');
+    }
+  }
+
+  if (errors.length) {
+    console.error('Environment validation failed:');
+    for (const e of errors) console.error(`  - ${e}`);
+    process.exit(1);
+  }
+}
+
+validateEnv();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || 'https://mcp-swap.thehiveryiq.com';
-const INTERNAL_KEY = process.env.INTERNAL_KEY || '';
 
-// ─── Partner DEX API endpoints ───────────────────────────────────────────────
-// Uniswap v3 (Base mainnet) — via Paraswap aggregator (no key required for quotes)
+// Paraswap aggregator on Base mainnet. Price quotes require no API key.
 const PARASWAP_BASE = 'https://apiv5.paraswap.io';
 const PARASWAP_NETWORK_BASE = 8453;
-// Jupiter (Solana mainnet) — public quote API
-const JUPITER_QUOTE_URL = 'https://quote-api.jup.ag/v6/quote';
-// OKX DEX (multi-chain) — public aggregator quote endpoint
-const OKX_DEX_QUOTE_URL = 'https://www.okx.com/api/v5/dex/aggregator/quote';
-
-// Hive trust + receipt fee: 5 bps = 0.0005
-const HIVE_FEE_BPS = 5;
-const HIVE_FEE_RATE = HIVE_FEE_BPS / 10000;
 
 // Well-known token addresses
 const TOKENS = {
@@ -42,11 +69,6 @@ const TOKENS = {
     WETH: '0x4200000000000000000000000000000000000006',
     USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
-  },
-  solana: {
-    SOL:  'So11111111111111111111111111111111111111112',
-    USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
   },
 };
 
@@ -78,9 +100,7 @@ app.use((req, res, next) => {
 
 // ─── Quote helpers ───────────────────────────────────────────────────────────
 
-async function quoteUniswapBase({ tokenIn, tokenOut, amountIn }) {
-  // Paraswap aggregator covers Uniswap v3, Aerodrome, PancakeswapV3 on Base.
-  // No API key required for price quotes.
+async function quoteParaswapBase({ tokenIn, tokenOut, amountIn }) {
   try {
     const srcToken = TOKENS.base[tokenIn] || tokenIn;
     const destToken = TOKENS.base[tokenOut] || tokenOut;
@@ -97,118 +117,40 @@ async function quoteUniswapBase({ tokenIn, tokenOut, amountIn }) {
     const route = d?.priceRoute;
     if (!route) return null;
     const destAmount = Number(route.destAmount) / (10 ** destDecimals);
-    const hiveFee = destAmount * HIVE_FEE_RATE;
+    const venues = route.bestRoute?.flatMap(path =>
+      path.swaps?.flatMap(swap =>
+        swap.swapExchanges?.map(exchange => ({
+          exchange: exchange.exchange,
+          percent: exchange.percent,
+        })) || []
+      ) || []
+    ) || [];
     return {
-      dex: 'Uniswap v3 (via Paraswap, Base)',
+      provider: 'Paraswap',
+      network_id: PARASWAP_NETWORK_BASE,
       chain: 'base',
       tokenIn,
       tokenOut,
       amountIn,
       amountOut: destAmount,
-      amountOutAfterHiveFee: destAmount - hiveFee,
-      hiveFeeAmount: hiveFee,
-      hiveFeeDescription: `${HIVE_FEE_BPS} bps trust + receipt fee`,
+      fee_bps: 0,
+      fee_collected: false,
       gasCostUSD: route.gasCostUSD,
-      bestRoute: route.bestRoute?.[0]?.swaps?.[0]?.swapExchanges?.map(e => ({
-        exchange: e.exchange,
-        percent: e.percent,
-      })),
-      partner_dex: 'Uniswap v3',
-      partner_url: 'https://app.uniswap.org',
+      venues,
+      provider_url: 'https://www.paraswap.io',
       raw_paraswap: { srcUSD: route.srcUSD, destUSD: route.destUSD },
     };
   } catch (err) {
-    return { dex: 'Uniswap v3 (Base)', error: String(err?.message || err), chain: 'base' };
+    return { provider: 'Paraswap', error: String(err?.message || err), chain: 'base' };
   }
 }
 
-async function quoteJupiterSolana({ tokenIn, tokenOut, amountIn }) {
-  try {
-    const inputMint = TOKENS.solana[tokenIn] || tokenIn;
-    const outputMint = TOKENS.solana[tokenOut] || tokenOut;
-    const srcDecimals = (tokenIn === 'USDC' || tokenIn === 'USDT') ? 6 : 9;
-    const rawAmount = Math.round(amountIn * (10 ** srcDecimals)).toString();
-
-    const url = `${JUPITER_QUOTE_URL}?inputMint=${inputMint}&outputMint=${outputMint}` +
-      `&amount=${rawAmount}&slippageBps=50`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) {
-      const text = await r.text().catch(() => '');
-      return { dex: 'Jupiter (Solana)', error: `HTTP ${r.status}: ${text.slice(0,200)}`, chain: 'solana' };
-    }
-    const d = await r.json();
-    const destDecimals = (tokenOut === 'USDC' || tokenOut === 'USDT') ? 6 : 9;
-    const amountOut = Number(d.outAmount) / (10 ** destDecimals);
-    const hiveFee = amountOut * HIVE_FEE_RATE;
-    return {
-      dex: 'Jupiter (Solana)',
-      chain: 'solana',
-      tokenIn,
-      tokenOut,
-      amountIn,
-      amountOut,
-      amountOutAfterHiveFee: amountOut - hiveFee,
-      hiveFeeAmount: hiveFee,
-      hiveFeeDescription: `${HIVE_FEE_BPS} bps trust + receipt fee`,
-      priceImpactPct: d.priceImpactPct,
-      routePlan: d.routePlan?.map(r => r.swapInfo?.label),
-      partner_dex: 'Jupiter',
-      partner_url: 'https://jup.ag',
-    };
-  } catch (err) {
-    return { dex: 'Jupiter (Solana)', error: String(err?.message || err), chain: 'solana' };
-  }
-}
-
-async function quoteOKXDex({ tokenIn, tokenOut, amountIn, chainId = 8453 }) {
-  try {
-    // OKX DEX public aggregator (requires OK-ACCESS-KEY for production; demo key for quotes)
-    // Base (chainId 8453) or Solana (chainId 501)
-    const srcToken = TOKENS.base[tokenIn] || tokenIn;
-    const destToken = TOKENS.base[tokenOut] || tokenOut;
-    const srcDecimals = (tokenIn === 'USDC' || tokenIn === 'USDT') ? 6 : 18;
-    const rawAmount = Math.round(amountIn * (10 ** srcDecimals)).toString();
-
-    const url = `${OKX_DEX_QUOTE_URL}?chainId=${chainId}` +
-      `&fromTokenAddress=${srcToken}&toTokenAddress=${destToken}&amount=${rawAmount}`;
-    const r = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
-      headers: { 'Content-Type': 'application/json' },
-    });
-    const d = await r.json();
-    if (d.code !== '0' || !d.data?.[0]) {
-      return { dex: 'OKX DEX', error: d.msg || 'No route', chain: 'base', okx_code: d.code };
-    }
-    const quote = d.data[0];
-    const destDecimals = (tokenOut === 'USDC' || tokenOut === 'USDT') ? 6 : 18;
-    const amountOut = Number(quote.toTokenAmount) / (10 ** destDecimals);
-    const hiveFee = amountOut * HIVE_FEE_RATE;
-    return {
-      dex: 'OKX DEX',
-      chain: 'base',
-      tokenIn,
-      tokenOut,
-      amountIn,
-      amountOut,
-      amountOutAfterHiveFee: amountOut - hiveFee,
-      hiveFeeAmount: hiveFee,
-      hiveFeeDescription: `${HIVE_FEE_BPS} bps trust + receipt fee`,
-      estimatedGas: quote.estimateGasFee,
-      partner_dex: 'OKX DEX',
-      partner_url: 'https://www.okx.com/web3/dex',
-    };
-  } catch (err) {
-    return { dex: 'OKX DEX', error: String(err?.message || err), chain: 'base' };
-  }
-}
-
-// ─── NEW: Swap Route Endpoints ───────────────────────────────────────────────
+// Swap Route Endpoints
 
 // GET /v1/swap-route/quote
-// Returns best route across Uniswap (Base), Jupiter (Solana), OKX DEX.
-// Attaches Hive trust score for each route.
+// Returns a read-only price route from Paraswap on Base.
 app.get('/v1/swap-route/quote', async (req, res) => {
-  const { tokenIn, tokenOut, amountIn, chain } = req.query;
+  const { tokenIn, tokenOut, amountIn } = req.query;
   if (!tokenIn || !tokenOut || !amountIn) {
     return res.status(400).json({
       error: 'tokenIn, tokenOut, amountIn required',
@@ -220,285 +162,138 @@ app.get('/v1/swap-route/quote', async (req, res) => {
     return res.status(400).json({ error: 'amountIn must be a positive number' });
   }
 
-  // Fan out to all three partner DEXes in parallel
-  const [uniswapQuote, jupiterQuote, okxQuote] = await Promise.all([
-    quoteUniswapBase({ tokenIn, tokenOut, amountIn: amount }),
-    quoteJupiterSolana({ tokenIn, tokenOut, amountIn: amount }),
-    quoteOKXDex({ tokenIn, tokenOut, amountIn: amount }),
-  ]);
+  const quote = await quoteParaswapBase({ tokenIn, tokenOut, amountIn: amount });
 
-  const quotes = [uniswapQuote, jupiterQuote, okxQuote].filter(Boolean);
-  const successful = quotes.filter(q => !q.error && q.amountOutAfterHiveFee != null);
-  successful.sort((a, b) => (b.amountOutAfterHiveFee || 0) - (a.amountOutAfterHiveFee || 0));
-
-  const bestRoute = successful[0] || null;
+  if (!quote || quote.error) {
+    return res.status(502).json({
+      error: 'no_route_available',
+      message: 'Paraswap did not return a usable Base quote for this pair and amount.',
+      upstream: quote || null,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   res.json({
     federation: 'hive-swap-router-federation',
-    doctrine: 'Hive is NOT a DEX. Hive quotes partner DEXes and attaches trust + receipt.',
-    partner_dexes: ['Uniswap v3 (Base)', 'Jupiter (Solana)', 'OKX DEX'],
-    hive_fee_bps: HIVE_FEE_BPS,
-    hive_fee_description: 'Trust score lookup + AML attestation + Spectral-signed receipt',
-    best_route: bestRoute,
-    all_routes: quotes,
-    hive_trust: {
-      aml_clear: true,
-      trust_score_checked: true,
-      receipt_will_be_spectral_signed: true,
-      note: 'Hive attaches trust scores and AML attestations. The actual swap executes on the partner DEX. Wallet keeps custody.',
-    },
+    doctrine: 'Read-only Paraswap price quote on Base. Hive does not construct or submit a transaction and does not custody funds.',
+    quote,
     timestamp: new Date().toISOString(),
   });
 });
 
-// POST /v1/swap-route/execute
-// Constructs a transaction the AGENT signs themselves.
-// Attaches Hive receipt + AML attestation. Charges 5 bps trust layer.
-// Wallet keeps custody. Partner DEX provides liquidity.
-app.post('/v1/swap-route/execute', async (req, res) => {
-  const { tokenIn, tokenOut, amountIn, minAmountOut, did, selectedDex, walletAddress } = req.body;
-  if (!tokenIn || !tokenOut || !amountIn || !did || !walletAddress) {
-    return res.status(400).json({
-      error: 'tokenIn, tokenOut, amountIn, did, walletAddress required',
-    });
-  }
-
-  const amount = parseFloat(amountIn);
-  const hiveFeeAmount = amount * HIVE_FEE_RATE;
-
-  // Get best quote from the selected or best available partner DEX
-  let quote;
-  if (selectedDex === 'jupiter') {
-    quote = await quoteJupiterSolana({ tokenIn, tokenOut, amountIn: amount });
-  } else if (selectedDex === 'okx') {
-    quote = await quoteOKXDex({ tokenIn, tokenOut, amountIn: amount });
-  } else {
-    quote = await quoteUniswapBase({ tokenIn, tokenOut, amountIn: amount });
-  }
-
-  const receiptId = `hive-swap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const timestamp = new Date().toISOString();
-
-  res.json({
-    federation: 'hive-swap-router-federation',
-    receipt_id: receiptId,
-    status: 'tx_constructed',
-    doctrine_note: 'The agent signs and submits this transaction. Wallet keeps custody. Hive provides trust layer only.',
-    tx_construction: {
-      partner_dex: quote?.partner_dex || 'Uniswap v3',
-      partner_url: quote?.partner_url || 'https://app.uniswap.org',
-      instruction: 'Agent signs and submits to partner DEX using walletAddress. Hive receipt attached.',
-      tokenIn,
-      tokenOut,
-      amountIn: amount,
-      amountOut: quote?.amountOutAfterHiveFee || null,
-      minAmountOut: minAmountOut || null,
-      walletAddress,
-      chain: quote?.chain || 'base',
-    },
-    hive_trust_layer: {
-      receipt_id: receiptId,
-      spectral_signed: true,
-      aml_attestation: {
-        status: 'clear',
-        checked_at: timestamp,
-        source: 'Hive AML screen',
-      },
-      trust_score: {
-        did,
-        score: 0.87,
-        tier: 'standard',
-        checked_at: timestamp,
-      },
-      hive_fee: {
-        amount: hiveFeeAmount,
-        currency: tokenIn,
-        bps: HIVE_FEE_BPS,
-        recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
-        description: 'Trust score + AML attestation + Spectral-signed receipt',
-      },
-    },
-    timestamp,
-  });
-});
-
-// ─── Health ─────────────────────────────────────────────────────────────────
+// Health
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'hive-swap-router-federation',
-    version: '2.0.0',
-    doctrine: 'swap-route-meta-router — NOT a DEX',
-    description: 'Meta-router that quotes Uniswap (Base), Jupiter (Solana), and OKX DEX. Charges 5 bps trust + receipt fee.',
-    partner_dexes: ['Uniswap v3', 'Jupiter', 'OKX DEX'],
-    hive_fee_bps: HIVE_FEE_BPS,
+    version: '2.2.0',
+    doctrine: 'swap-route-meta-router, not a DEX',
+    description: 'Read-only Paraswap price quotes on Base. No transaction construction, execution, custody, or fee collection.',
+    quote_provider: 'Paraswap',
+    chain: 'base',
     timestamp: new Date().toISOString(),
     uptime_seconds: Math.floor(process.uptime()),
     endpoints: [
       'GET /v1/swap-route/quote',
-      'POST /v1/swap-route/execute',
     ],
-    deprecated: ['swap.execute_swap (vAMM)', 'swap.add_liquidity', 'swap.list_pools'],
   });
 });
 
-// ─── Agent-native config ─────────────────────────────────────────────────────
+// Agent-native config
 const HIVE_AGENT_CFG = {
   name: 'hive-swap-router-federation',
   description: [
-    'Swap route meta-router for agent-native commerce. Quotes Uniswap v3 (Base),',
-    'Jupiter (Solana), and OKX DEX (multi-chain). Returns the best route across partner',
-    'DEXes. Charges a thin 5 bps trust + receipt fee — the actual swap executes on the',
-    'partner DEX. Wallet keeps custody. Hive provides trust scores, AML attestations,',
-    'and Spectral-signed receipts.',
+    'Read-only Paraswap price quotes on Base for agent-native commerce.',
+    'Hive does not construct or submit transactions, collect a routing fee,',
+    'operate liquidity, or custody funds.',
   ].join(' '),
   url: BASE_URL,
-  version: '2.0.0',
+  version: '2.2.0',
   repoUrl: 'https://github.com/srotzin/hive-mcp-swap',
   did: 'did:hive:swap-router-federation',
   gatewayUrl: 'https://mcp-swap.thehiveryiq.com',
   tools: [],
 };
 
-// MCP tools — federation-shaped, NOT DEX-shaped
+// MCP tools, federation-shaped, not DEX-shaped
 const MCP_TOOLS = [
   {
     name: 'swap_route.quote',
     description: [
-      'Get the best swap route across Uniswap v3 (Base), Jupiter (Solana), and OKX DEX.',
-      'Returns route comparison with Hive trust scores and AML attestations attached.',
-      'Hive charges 5 bps trust + receipt fee. Actual liquidity is from partner DEXes.',
-      'No authentication required.',
+      'Get a read-only Paraswap price quote on Base.',
+      'The response identifies the actual venues returned by Paraswap.',
+      'No transaction construction, execution, custody, or fee collection.',
     ].join(' '),
     annotations: { readOnlyHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
       required: ['tokenIn', 'tokenOut', 'amountIn'],
       properties: {
-        tokenIn: { type: 'string', description: 'Input token symbol. One of: ETH, WETH, USDC, USDT, SOL.' },
-        tokenOut: { type: 'string', description: 'Output token symbol. One of: ETH, WETH, USDC, USDT, SOL.' },
+        tokenIn: { type: 'string', description: 'Input token symbol on Base. One of: ETH, WETH, USDC, USDT.' },
+        tokenOut: { type: 'string', description: 'Output token symbol on Base. One of: ETH, WETH, USDC, USDT.' },
         amountIn: { type: 'number', description: 'Amount of input token. Must be greater than 0.' },
-        chain: { type: 'string', description: 'Preferred chain: base (Uniswap/OKX) or solana (Jupiter). Omit to quote all.' },
-      },
-    },
-  },
-  {
-    name: 'swap_route.execute',
-    description: [
-      'Construct a swap transaction the agent signs themselves. Attaches Hive trust score,',
-      'AML attestation, and Spectral-signed receipt. Charges 5 bps trust layer.',
-      'The agent submits the transaction to the partner DEX (Uniswap/Jupiter/OKX).',
-      'Wallet keeps custody. Hive provides trust plumbing only.',
-    ].join(' '),
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    inputSchema: {
-      type: 'object',
-      required: ['tokenIn', 'tokenOut', 'amountIn', 'did', 'walletAddress'],
-      properties: {
-        tokenIn: { type: 'string', description: 'Input token symbol.' },
-        tokenOut: { type: 'string', description: 'Output token symbol.' },
-        amountIn: { type: 'number', description: 'Amount of input token.' },
-        minAmountOut: { type: 'number', description: 'Minimum acceptable output (slippage guard).' },
-        did: { type: 'string', description: 'Agent DID for trust score lookup.' },
-        walletAddress: { type: 'string', description: 'Agent wallet address that will sign the tx.' },
-        selectedDex: { type: 'string', enum: ['uniswap', 'jupiter', 'okx'], description: 'Partner DEX to route to. Defaults to best quote.' },
       },
     },
   },
 ];
 
-// ─── MCP endpoint ───────────────────────────────────────────────────────────
+// MCP endpoint
+// JSON-RPC 2.0 over Streamable-HTTP, MCP 2024-11-05. Any method this server
+// does not implement returns a real JSON-RPC error, not a fabricated result.
 app.post('/mcp', async (req, res) => {
-  const { jsonrpc, id, method, params } = req.body;
+  const body = req.body || {};
+  const { jsonrpc, id, method, params } = body;
   res.setHeader('Content-Type', 'application/json');
+
+  if (jsonrpc !== '2.0' || !method || typeof method !== 'string') {
+    return res.status(400).json({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: { code: -32600, message: 'Invalid Request: body must be JSON-RPC 2.0 with a string method.' },
+    });
+  }
 
   if (method === 'initialize') {
     return res.json({ jsonrpc, id, result: {
       protocolVersion: '2024-11-05',
-      serverInfo: { name: 'hive-swap-router-federation', version: '2.0.0' },
+      serverInfo: { name: 'hive-swap-router-federation', version: '2.2.0' },
       capabilities: { tools: {} },
     }});
   }
 
   if (method === 'tools/list') {
-    const allTools = [...MCP_TOOLS, ...HIVE_EARN_TOOLS];
-    return res.json({ jsonrpc, id, result: { tools: allTools } });
+    return res.json({ jsonrpc, id, result: { tools: MCP_TOOLS } });
   }
 
   if (method === 'tools/call') {
-    const { name: toolName, arguments: args } = params;
+    const { name: toolName, arguments: args = {} } = params || {};
 
-    if (isHiveEarnTool(toolName)) {
-      const result = await executeHiveEarnTool(toolName, args);
-      return res.json({ jsonrpc, id, result: { content: [result] } });
+    if (!toolName || typeof toolName !== 'string') {
+      return res.json({ jsonrpc, id, error: { code: -32602, message: 'Invalid params: arguments.name is required.' } });
     }
 
     if (toolName === 'swap_route.quote') {
-      const { tokenIn, tokenOut, amountIn, chain } = args;
+      const { tokenIn, tokenOut, amountIn } = args;
       if (!tokenIn || !tokenOut || !amountIn) {
         return res.json({ jsonrpc, id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'tokenIn, tokenOut, amountIn required' }) }] } });
       }
       const amount = parseFloat(amountIn);
-      const [uniswapQuote, jupiterQuote, okxQuote] = await Promise.all([
-        quoteUniswapBase({ tokenIn, tokenOut, amountIn: amount }),
-        quoteJupiterSolana({ tokenIn, tokenOut, amountIn: amount }),
-        quoteOKXDex({ tokenIn, tokenOut, amountIn: amount }),
-      ]);
-      const quotes = [uniswapQuote, jupiterQuote, okxQuote].filter(Boolean);
-      const successful = quotes.filter(q => !q.error && q.amountOutAfterHiveFee != null);
-      successful.sort((a, b) => (b.amountOutAfterHiveFee || 0) - (a.amountOutAfterHiveFee || 0));
-      const payload = {
-        federation: 'hive-swap-router-federation',
-        best_route: successful[0] || null,
-        all_routes: quotes,
-        hive_fee_bps: HIVE_FEE_BPS,
-        doctrine: 'Hive quotes partner DEXes; actual swap executes on partner DEX. Wallet keeps custody.',
-        timestamp: new Date().toISOString(),
-      };
-      return res.json({ jsonrpc, id, result: { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] } });
-    }
-
-    if (toolName === 'swap_route.execute') {
-      const { tokenIn, tokenOut, amountIn, minAmountOut, did, walletAddress, selectedDex } = args;
-      if (!tokenIn || !tokenOut || !amountIn || !did || !walletAddress) {
-        return res.json({ jsonrpc, id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'tokenIn, tokenOut, amountIn, did, walletAddress required' }) }] } });
+      if (isNaN(amount) || amount <= 0) {
+        return res.json({ jsonrpc, id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'amountIn must be a positive number' }) }] } });
       }
-      const amount = parseFloat(amountIn);
-      let quote;
-      if (selectedDex === 'jupiter') {
-        quote = await quoteJupiterSolana({ tokenIn, tokenOut, amountIn: amount });
-      } else if (selectedDex === 'okx') {
-        quote = await quoteOKXDex({ tokenIn, tokenOut, amountIn: amount });
-      } else {
-        quote = await quoteUniswapBase({ tokenIn, tokenOut, amountIn: amount });
-      }
-      const receiptId = `hive-swap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const hiveFeeAmount = amount * HIVE_FEE_RATE;
-      const payload = {
-        federation: 'hive-swap-router-federation',
-        receipt_id: receiptId,
-        status: 'tx_constructed',
-        doctrine_note: 'Agent signs and submits. Wallet keeps custody. Hive provides trust layer.',
-        partner_dex: quote?.partner_dex || 'Uniswap v3',
-        partner_url: quote?.partner_url || 'https://app.uniswap.org',
-        amountIn: amount,
-        amountOut: quote?.amountOutAfterHiveFee || null,
-        walletAddress,
-        chain: quote?.chain || 'base',
-        hive_trust_layer: {
-          receipt_id: receiptId,
-          spectral_signed: true,
-          aml_clear: true,
-          trust_score: { did, score: 0.87, tier: 'standard' },
-          hive_fee: {
-            amount: hiveFeeAmount,
-            bps: HIVE_FEE_BPS,
-            recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
-            description: 'Trust score + AML attestation + Spectral-signed receipt',
-          },
-        },
-        timestamp: new Date().toISOString(),
-      };
+      const quote = await quoteParaswapBase({ tokenIn, tokenOut, amountIn: amount });
+      const payload = quote && !quote.error
+        ? {
+            federation: 'hive-swap-router-federation',
+            quote,
+            doctrine: 'Read-only Paraswap price quote on Base. Hive does not construct or submit transactions.',
+            timestamp: new Date().toISOString(),
+          }
+        : {
+            error: 'no_route_available',
+            message: 'Paraswap did not return a usable Base quote for this pair and amount.',
+            upstream: quote || null,
+          };
       return res.json({ jsonrpc, id, result: { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] } });
     }
 
@@ -508,7 +303,18 @@ app.post('/mcp', async (req, res) => {
   res.json({ jsonrpc, id, error: { code: -32601, message: `Method not found: ${method}` } });
 });
 
-// ─── Standard Hive routes ───────────────────────────────────────────────────
+// Standard Hive routes
+// Each path below is registered exactly once. There is no duplicate
+// registration and no catch-all that returns 200 for a path that does not
+// exist. Unknown paths get a real 404 (see the bottom of this file).
+
+const _HOST_DEFAULT = process.env.RENDER_EXTERNAL_URL || BASE_URL;
+const _ONBOARD_URL = 'https://thehiveryiq.com/onboard.html';
+
+function hostFor(req) {
+  return req.hostname ? `https://${req.hostname}` : _HOST_DEFAULT;
+}
+
 app.get('/', (req, res) => {
   const agentCard = buildAgentCard({ ...HIVE_AGENT_CFG, tools: MCP_TOOLS });
   res.setHeader('Content-Type', 'text/html');
@@ -520,163 +326,124 @@ app.get('/.well-known/agent.json', (req, res) => {
 });
 
 app.get('/.well-known/mcp.json', (req, res) => {
-  res.json({ name: 'hive-swap-router-federation', version: '2.0.0', endpoint: `${BASE_URL}/mcp` });
+  res.json({ name: 'hive-swap-router-federation', version: '2.2.0', endpoint: `${BASE_URL}/mcp` });
 });
 
-app.get('/robots.txt', (req, res) => { res.type('text/plain'); res.send(renderRobots(BASE_URL)); });
-app.get('/sitemap.xml', (req, res) => { res.type('application/xml'); res.send(renderSitemap(BASE_URL)); });
 app.get('/.well-known/security.txt', (req, res) => { res.type('text/plain'); res.send(renderSecurity()); });
-app.get('/og.svg', (req, res) => { res.type('image/svg+xml'); res.send(renderOgImage('hive-swap-router-federation')); });
-app.get('/seo.json', (req, res) => { res.json(seoJson(HIVE_AGENT_CFG)); });
+app.get('/og.svg', (req, res) => {
+  res.type('image/svg+xml');
+  res.send(renderOgImageSvg(HIVE_AGENT_CFG));
+});
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SLIPPERY-STICKY DOORS — doctrine: never closed, always navigable
-// Paths: /llms.txt /robots.txt /sitemap.xml /.well-known/agent.json
-//        /favicon.ico / (root JSON)  +  catch-all breadcrumb (200 not 404)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const _DOORS_HOST = process.env.RENDER_EXTERNAL_URL || 'https://mcp-swap.thehiveryiq.com';
-const _DOORS_ONBOARD = 'https://thehiveryiq.com/onboard.html';
-const _TREASURY = '0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E';
-
-// ── /llms.txt ─────────────────────────────────────────────────────────────────
 app.get('/llms.txt', (req, res) => {
+  const host = hostFor(req);
   res.type('text/plain; charset=utf-8').send(`# Hive MCP Swap
-> MCP swap-route meta-router: best-route quotes across Uniswap v3 (Base), Jupiter (Solana), and OKX DEX — trust + receipt layer only, never custodying liquidity.
+> Read-only Paraswap price quotes on Base. Hive does not construct or submit transactions, collect fees, or custody funds.
 
 ## What this is
-Hive MCP Swap is part of the Hive Civilization federation — a network of agent-facing
-microservices built for autonomous AI agents. Every public surface is navigable
-without a DID. Paid surfaces return a 402 with \`amount_min_usd\` — the floor price.
-Submit any value >= that floor. No ceiling enforced server-side.
+Hive MCP Swap is part of the Hive Civilization federation, a network of agent-facing
+microservices built for autonomous AI agents. Every real endpoint is documented below.
+Paths that are not listed here do not exist on this server and return a 404.
 
 ## Auth model
 - Free: GET /health, /llms.txt, /robots.txt, /sitemap.xml, /.well-known/*
-- Paid (thin 5 bps trust + receipt fee): POST /mcp tool calls
-- Hive does NOT execute swaps. Hive quotes, attests, and receipts.
-- Partner DEX provides liquidity. Your wallet keeps custody.
-- Settlement: USDC on Base to treasury address
-- First call free with X-Hive-DID header
+- Free: quote calls under /v1/swap-route and /mcp
+- Hive does not construct or submit transactions.
 
 ## Key endpoints
-- GET  /health                          — liveness check (free)
-- GET  /v1/swap-route/quote             — best-route quote across DEXes (free read)
-- POST /mcp                             — MCP JSON-RPC (swap tools)
-- GET  /.well-known/mcp.json            — MCP discovery manifest (free)
-- GET  /.well-known/agent.json          — A2A agent card (free)
-MCP tools:
-  swap_route_quote   — get best DEX route (Uniswap/Jupiter/OKX)
-  swap_route_execute — execute via partner DEX (5 bps Hive trust fee)
-  swap_route_status  — check swap status
+- GET  /health                     liveness check (free)
+- GET  /v1/swap-route/quote        read-only Paraswap quote on Base
+- POST /mcp                        MCP JSON-RPC (swap_route.quote)
+- GET  /.well-known/mcp.json       MCP discovery manifest (free)
+- GET  /.well-known/agent.json     A2A agent card (free)
 
-## Sister services
-- HiveGate  (auth + onboarding):  https://hivegate.hiveagentiq.com/llms.txt
-- HiveBank  (vaults + payments):  https://hivebank.hiveagentiq.com/llms.txt
-- HiveVault MCP:                  https://mcp-vault.thehiveryiq.com/llms.txt
+## Scope
+- The server returns price information only.
+- It does not construct, sign, submit, or settle transactions.
 
-## Hive Civilization context
-Treasury: 0x15184Bf50B3d3F52b60434f8942b7D52F2eB436E (Base USDC/USDT)
-Solana: canonical Solana treasury address (see /.well-known/hive-payments.json)
-x402 barter floor: 402 envelope returns \`amount_min_usd\` — submit >= that value
-BOGO: first DID free, 6th paid call on the house (\`x-hive-did\` header to claim)
-Contact / onboard: https://thehiveryiq.com/onboard.html
-Patent: USPTO Provisional 64/055,601
+## Contact
+Onboard: https://thehiveryiq.com/onboard.html
 
-## License + brand
+## License and brand
 License: MIT
-Brand color: gold #FFB800
-Last updated: 2026-05-02
+Brand color: gold #C08D23
 `);
 });
 
-// ── /robots.txt ───────────────────────────────────────────────────────────────
 app.get('/robots.txt', (req, res) => {
-  const host = req.hostname ? `https://${req.hostname}` : _DOORS_HOST;
+  const host = hostFor(req);
   res.type('text/plain; charset=utf-8').send(
     `User-agent: *\nAllow: /\nSitemap: ${host}/sitemap.xml\n\n` +
-    `# Hive Civilization — slippery-sticky: every door is open\n` +
-    `# Autonomous agents welcome. See /llms.txt for full API guide.\n` +
+    `# Hive Civilization public discovery surface. Autonomous agents welcome.\n` +
+    `# See /llms.txt for the full API guide.\n` +
     `# Onboard: https://thehiveryiq.com/onboard.html\n`
   );
 });
 
-// ── /sitemap.xml ──────────────────────────────────────────────────────────────
 app.get('/sitemap.xml', (req, res) => {
-  const host = req.hostname ? `https://${req.hostname}` : _DOORS_HOST;
-  const today = new Date().toISOString().slice(0,10);
+  const host = hostFor(req);
+  const today = new Date().toISOString().slice(0, 10);
   res.type('application/xml; charset=utf-8').send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${host}/</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
   <url><loc>${host}/health</loc><lastmod>${today}</lastmod><changefreq>always</changefreq><priority>0.9</priority></url>
-  <url><loc>${host}/openapi.json</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>${host}/llms.txt</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>${host}/.well-known/agent.json</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>${host}/.well-known/mcp.json</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
 </urlset>`);
 });
 
-// ── /.well-known/agent.json (A2A discovery — only if not already defined) ────
-if (!app._router || !app._router.stack.some(l => l.route && l.route.path === '/.well-known/agent.json')) {
-  app.get('/.well-known/agent.json', (req, res) => {
-    const host = req.hostname ? `https://${req.hostname}` : _DOORS_HOST;
-    res.json({
-      name: 'hive-mcp-swap',
-      description: 'MCP swap-route meta-router: best-route quotes across Uniswap v3 (Base), Jupiter (Solana), and OKX DEX — trust + receipt layer only, never custodying liquidity.',
-      url: host,
-      contact: _DOORS_ONBOARD,
-      did: 'did:hive:hive-mcp-swap',
-      capabilities: ['mcp', 'x402-payments', 'usdc', 'agent-to-agent'],
-      paywall: { protocol: 'x402', treasury: _TREASURY, hint: 'See /llms.txt for barter floor details' },
-      onboard: _DOORS_ONBOARD,
-      llms_txt: `${host}/llms.txt`,
-      openapi: `${host}/openapi.json`,
-      health: `${host}/health`,
-      brand: { color: '#FFB800', name: 'Hive Civilization' },
-    });
-  });
-}
-
-// ── /favicon.ico — 1x1 Hive gold pixel ───────────────────────────────────────
+// /favicon.ico, a 1x1 Hive gold pixel
 app.get('/favicon.ico', (req, res) => {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
   res.status(200).set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }).end(png);
 });
 
-// ── / root — friendly JSON for agents that hit the base URL ──────────────────
-// Only register if no existing root handler
-if (!app._router || !app._router.stack.some(l => l.route && l.route.path === '/' && l.route.methods.get)) {
-  app.get('/', (req, res) => {
-    const host = req.hostname ? `https://${req.hostname}` : _DOORS_HOST;
-    res.json({
-      name: 'Hive MCP Swap',
-      what: 'MCP swap-route meta-router: best-route quotes across Uniswap v3 (Base), Jupiter (Solana), and OKX DEX — trust + receipt layer only, never custodying liquidity.',
-      for_agents: 'see /llms.txt and /openapi.json',
-      onboard: _DOORS_ONBOARD,
-      paywall: 'x402 — see /llms.txt',
-      health: `${host}/health`,
-      openapi: `${host}/openapi.json`,
-      llms_txt: `${host}/llms.txt`,
-      mcp: `${host}/mcp`,
-    });
+// Unknown routes fail honestly
+// This server does not pretend an unknown path is a valid endpoint. A request
+// to any path not registered above returns a real 404 with a list of the
+// endpoints that do exist, so a client can recover without being told a lie.
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'not_found',
+    message: `No route for ${req.method} ${req.path}.`,
+    known_endpoints: [
+      'GET /',
+      'GET /health',
+      'GET /llms.txt',
+      'GET /robots.txt',
+      'GET /sitemap.xml',
+      'GET /.well-known/agent.json',
+      'GET /.well-known/mcp.json',
+      'GET /.well-known/security.txt',
+      'GET /v1/swap-route/quote',
+      'POST /mcp',
+    ],
+    onboard: _ONBOARD_URL,
+  });
+});
+
+// Error handler
+// Any uncaught error in a route handler fails honestly with a 500 instead of
+// crashing silently or being swallowed into a fake 200.
+app.use((err, req, res, _next) => {
+  console.error(`Unhandled error on ${req.method} ${req.path}:`, err);
+  if (res.headersSent) return;
+  res.status(500).json({
+    error: 'internal_error',
+    message: 'The server hit an unexpected error handling this request.',
+  });
+});
+
+// Only bind a port when this file is run directly (`node server.js`).
+// When imported as a module, e.g. from tests via supertest, exporting the
+// app without listening avoids port conflicts and lets tests control
+// the lifecycle.
+if (process.env.NODE_ENV !== 'test' && import.meta.url === `file://${process.argv[1]}`) {
+  app.listen(PORT, () => {
+    console.log(`hive-swap-router-federation listening on :${PORT}`);
+    console.log('Doctrine: read-only Paraswap price quotes on Base. Not a DEX.');
   });
 }
 
-// ── Catch-all — every wrong door is a lead, never a dead end ─────────────────
-app.use((req, res, _next) => {
-  const host = req.hostname ? `https://${req.hostname}` : _DOORS_HOST;
-  res.status(200).json({
-    hint: 'unknown path — but we kept the door open',
-    you_asked_for: req.path,
-    try: ['/llms.txt', '/openapi.json', '/health', '/', '/.well-known/agent.json'],
-    onboard: _DOORS_ONBOARD,
-    service: 'Hive MCP Swap',
-    docs: `${host}/llms.txt`,
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`hive-swap-router-federation listening on :${PORT}`);
-  console.log(`Doctrine: meta-router (NOT DEX). Partners: Uniswap v3, Jupiter, OKX DEX.`);
-  console.log(`Hive fee: ${HIVE_FEE_BPS} bps trust + receipt layer.`);
-});
+export default app;

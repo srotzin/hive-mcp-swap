@@ -1,37 +1,20 @@
-# Smithery Registry — HiveSwap MCP Server
+# Smithery Registry: HiveSwap MCP Server
 
 startCommand:
   type: http
   configSchema:
     type: object
-    properties:
-      did:
-        type: string
-        title: "Agent DID"
-        x-order: 0
-      api_key:
-        type: string
-        title: "API Key"
-        x-sensitive: true
-        x-order: 1
-      default_rail:
-        type: string
-        title: "Settlement Rail"
-        enum:
-          - base-usdc
-          - aleo-usdcx
-        default: base-usdc
-        x-order: 2
+    properties: {}
     required: []
   url: https://mcp-swap.thehiveryiq.com/mcp
 
 name: hiveswap-mcp
-displayName: HiveSwap — Agent-Native vAMM DEX
-version: "1.0.0"
+displayName: HiveSwap Read-Only Quotes
+version: "2.2.0"
 description: >
-  Agent-native vAMM DEX for swapping USDC, USDCx, USAD, and ALEO across 4 settlement rails.
-  ZK-private swaps via Aleo rail. Deep liquidity from Hive Civilization genesis agent pool.
-  Settles in milliseconds via HiveBank. Part of Hive Civilization (thehiveryiq.com).
+  Read-only Paraswap price quotes on Base. Responses identify the venues returned by
+  Paraswap. Hive does not construct, sign, submit, or settle transactions, collect
+  routing fees, operate liquidity, or custody funds.
 
 author:
   name: Steve Rotzin
@@ -49,25 +32,19 @@ endpoint: https://mcp-swap.thehiveryiq.com/mcp
 protocol: "2024-11-05"
 
 categories:
-  - defi
   - agent-to-agent
   - web3
-  - payments
-  - zero-knowledge
+  - developer-tools
 
 tags:
   - mcp
   - hive
   - swap
-  - vamm
-  - dex
-  - usdc
-  - aleo
-  - zk
+  - read-only
+  - dex-aggregator
+  - paraswap
   - base-l2
-  - defai
   - ai-agents
-  - settlement
 
 runtime:
   type: node
