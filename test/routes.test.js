@@ -1,14 +1,23 @@
-import { test, before } from 'node:test';
+import { test, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
 
 let app;
+let originalFetch;
 
 before(async () => {
   const mod = await import('../server.js');
   app = mod.default;
+});
+
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
 });
 
 test('unknown HTTP paths return 404', async () => {
@@ -140,4 +149,144 @@ test('user-facing responses have no em dash, en dash, or double hyphen', async (
     assert.ok(!text.includes('\u2013'), `${path} contains an en dash`);
     assert.ok(!/[^-]--[^-]/.test(text), `${path} contains a double hyphen`);
   }
+});
+
+// Regression test for the renderRootHtml call site bug: the handler used to
+// pass a wrapper object ({ cfg, agentCard, oacJsonLd }) into a function that
+// expects the flat config object. renderRootHtml reads cfg.name, cfg.url,
+// and cfg.description directly off its argument, so the mismatch rendered
+// literal "undefined" strings into the root HTML instead of the real
+// service identity. This test fails if that wrapper mismatch is ever
+// reintroduced.
+test('GET / renders the real service identity with no literal undefined', async () => {
+  const res = await request(app).get('/');
+  assert.equal(res.status, 200);
+  assert.match(res.headers['content-type'], /text\/html/);
+
+  const html = res.text;
+  assert.ok(!html.includes('undefined'), 'root HTML must not contain the literal string undefined');
+
+  assert.ok(html.includes('hive-swap-router-federation'), 'root HTML must contain the real service name');
+  assert.ok(
+    html.includes('Read-only Paraswap price quotes on Base for agent-native commerce.'),
+    'root HTML must contain the real service description'
+  );
+  assert.ok(html.includes('https://mcp-swap.thehiveryiq.com'), 'root HTML must contain the real service url');
+});
+
+// Tests for quoteParaswapBase, exercised through the GET /v1/swap-route/quote
+// route since the function itself is not exported. quoteParaswapBase was
+// probed directly beforehand and already fails closed correctly: it returns
+// null on a non-2xx or route-less response and an { error } object when it
+// throws, and both shapes are mapped by the route handler to HTTP 502 with
+// a no_route_available error, never a fabricated success. These tests are
+// additive proof of that existing behavior, not a fix for a defect.
+//
+// The upstream is stubbed via globalThis.fetch, which quoteParaswapBase
+// calls directly at request time, so no network access to Paraswap happens
+// in this suite.
+test('quoteParaswapBase positive path: well formed upstream 2xx produces a real quote', async () => {
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      priceRoute: {
+        destAmount: '2500000000',
+        gasCostUSD: '1.23',
+        srcUSD: '1.00',
+        destUSD: '2500.00',
+        bestRoute: [
+          {
+            swaps: [
+              {
+                swapExchanges: [{ exchange: 'UniswapV3', percent: 100 }],
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  });
+
+  const res = await request(app).get('/v1/swap-route/quote').query({
+    tokenIn: 'ETH',
+    tokenOut: 'USDC',
+    amountIn: '1',
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.quote.provider, 'Paraswap');
+  assert.equal(res.body.quote.chain, 'base');
+  assert.equal(res.body.quote.amountOut, 2500);
+  assert.equal(res.body.quote.error, undefined);
+  assert.deepEqual(res.body.quote.venues, [{ exchange: 'UniswapV3', percent: 100 }]);
+});
+
+test('quoteParaswapBase fails closed on upstream non-2xx', async () => {
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 500,
+    json: async () => ({ error: 'internal' }),
+  });
+
+  const res = await request(app).get('/v1/swap-route/quote').query({
+    tokenIn: 'ETH',
+    tokenOut: 'USDC',
+    amountIn: '1',
+  });
+
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error, 'no_route_available');
+  assert.equal(res.body.quote, undefined);
+});
+
+test('quoteParaswapBase fails closed on upstream non-JSON body', async () => {
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => { throw new SyntaxError('Unexpected token in JSON'); },
+  });
+
+  const res = await request(app).get('/v1/swap-route/quote').query({
+    tokenIn: 'ETH',
+    tokenOut: 'USDC',
+    amountIn: '1',
+  });
+
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error, 'no_route_available');
+  assert.equal(res.body.quote, undefined);
+});
+
+test('quoteParaswapBase fails closed on upstream empty body', async () => {
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({}),
+  });
+
+  const res = await request(app).get('/v1/swap-route/quote').query({
+    tokenIn: 'ETH',
+    tokenOut: 'USDC',
+    amountIn: '1',
+  });
+
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error, 'no_route_available');
+  assert.equal(res.body.quote, undefined);
+});
+
+test('quoteParaswapBase fails closed when upstream is unreachable', async () => {
+  globalThis.fetch = async () => { throw new Error('fetch failed'); };
+
+  const res = await request(app).get('/v1/swap-route/quote').query({
+    tokenIn: 'ETH',
+    tokenOut: 'USDC',
+    amountIn: '1',
+  });
+
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error, 'no_route_available');
+  assert.equal(res.body.quote, undefined);
+  assert.equal(res.body.upstream.error, 'fetch failed');
 });

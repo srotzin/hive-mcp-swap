@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: hive-mcp-swap
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev --no-audit --no-fund
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BASE_URL
+        value: https://mcp-swap.thehiveryiq.com
+    healthCheckPath: /health
+    autoDeploy: true

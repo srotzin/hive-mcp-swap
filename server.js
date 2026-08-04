@@ -316,9 +316,8 @@ function hostFor(req) {
 }
 
 app.get('/', (req, res) => {
-  const agentCard = buildAgentCard({ ...HIVE_AGENT_CFG, tools: MCP_TOOLS });
   res.setHeader('Content-Type', 'text/html');
-  res.send(renderRootHtml({ cfg: HIVE_AGENT_CFG, agentCard, oacJsonLd: buildOacJsonLd({ ...HIVE_AGENT_CFG, tools: MCP_TOOLS }) }));
+  res.send(renderRootHtml({ ...HIVE_AGENT_CFG, tools: MCP_TOOLS }));
 });
 
 app.get('/.well-known/agent.json', (req, res) => {
